@@ -1,6 +1,9 @@
 import subprocess
 import threading
 import time
+import Util
+
+
 
 import cv2
 import configparser
@@ -21,15 +24,16 @@ def adb_root(cd_adbpath):
     adb_command01 = f"adb root"
     adb_command01 = combine_adb_commands(cd_adbpath, adb_command01)
     print(f"【执行-ROOT】{adb_command01}")
-    subprocess.run(adb_command01, shell=True, capture_output=True, text=True)
+    return subprocess.run(adb_command01, shell=True, capture_output=True, text=True)
 
 
 # adb connect
-def adb_connect(port):
+def adb_connect(cd_adbpath,port):
     adb_command01 = f"adb connect 127.0.0.1:{port}"
     adb_command01 = combine_adb_commands(cd_adbpath, adb_command01)
     print(f"【执行-ADB连接】{adb_command01}")
-    subprocess.run(adb_command01, shell=True, capture_output=True, text=True)
+    return  subprocess.run(adb_command01, shell=True, capture_output=True, text=True)
+
 
 # adb截图并导出
 def adb_screencap(cd_adbpath, img_src):
@@ -46,7 +50,7 @@ def adb_screencap(cd_adbpath, img_src):
 # Pillow 库剪切图片
 def crop_and_save_image(input_dir, input_image_name, x1, y1, x2, y2, output_dir, new_image_name):
     # 构造输入图片的路径
-    input_image_path = img_dir + "/" + input_image_name
+    input_image_path = input_dir + "/" + input_image_name
     # 打开图片
     try:
         img = Image.open(input_image_path)
@@ -81,6 +85,9 @@ def compare_images(img1, img2):
     img1_gray = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
     img2_gray = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
+    if img1_gray.shape != img2_gray.shape:
+        img2_gray = cv2.resize(img2_gray, (img1_gray.shape[1], img1_gray.shape[0]))
+
     # 计算两张图像的绝对差异
     diff = cv2.absdiff(img1_gray, img2_gray)
 
@@ -90,8 +97,8 @@ def compare_images(img1, img2):
 
 # 从config.ini中读取adb的路径
 def get_adb_path():
-    current_file_directory = os.path.dirname(os.path.abspath(__file__))
-    ini_path = os.path.join(current_file_directory, "config\\config.ini")
+
+    ini_path = Util.get_path("config\\config.ini")
     # 创建配置解析器
     config = configparser.ConfigParser()
     # 读取配置文件
@@ -104,8 +111,7 @@ def get_adb_path():
 
 # 写入adb的路径到config.ini
 def set_adb_path(new_adb_path):
-    current_file_directory = os.path.dirname(os.path.abspath(__file__))
-    ini_path = os.path.join(current_file_directory, "config\\config.ini")
+    ini_path = Util.get_path("config\\config.ini")
     # 创建配置解析器
     config = configparser.ConfigParser()
     config.read(ini_path)
@@ -120,8 +126,7 @@ def set_adb_path(new_adb_path):
 
 # 从config.ini中读取adb的路径
 def get_adb_port():
-    current_file_directory = os.path.dirname(os.path.abspath(__file__))
-    ini_path = os.path.join(current_file_directory, "config\\config.ini")
+    ini_path = Util.get_path("config\\config.ini")
     # 创建配置解析器
     config = configparser.ConfigParser()
     # 读取配置文件
@@ -134,8 +139,7 @@ def get_adb_port():
 
 # 写入adb的端口到config.ini
 def set_adb_port(new_adb_port):
-    current_file_directory = os.path.dirname(os.path.abspath(__file__))
-    ini_path = os.path.join(current_file_directory, "config\\config.ini")
+    ini_path = Util.get_path("config\\config.ini")
     # 创建配置解析器
     config = configparser.ConfigParser()
     config.read(ini_path)
@@ -149,8 +153,7 @@ def set_adb_port(new_adb_port):
 
 
 def get_rank_coordinate():
-    current_file_directory = os.path.dirname(os.path.abspath(__file__))
-    ini_path = os.path.join(current_file_directory, "config\\config.ini")
+    ini_path = Util.get_path("config\\config.ini")
     # 创建配置解析器
     config = configparser.ConfigParser()
     # 读取配置文件
@@ -165,8 +168,7 @@ def get_rank_coordinate():
 
 
 def set_rank_coordinate(x, y, w, h):
-    current_file_directory = os.path.dirname(os.path.abspath(__file__))
-    ini_path = os.path.join(current_file_directory, "config\\config.ini")
+    ini_path = Util.get_path("config\\config.ini")
     # 创建配置解析器
     config = configparser.ConfigParser()
     config.read(ini_path)
@@ -183,8 +185,7 @@ def set_rank_coordinate(x, y, w, h):
 
 # 从config.ini中读取是否弹窗提醒
 def get_popup_reminders():
-    current_file_directory = os.path.dirname(os.path.abspath(__file__))
-    ini_path = os.path.join(current_file_directory, "config\\config.ini")
+    ini_path = Util.get_path("config\\config.ini")
     # 创建配置解析器
     config = configparser.ConfigParser()
     # 读取配置文件
@@ -200,8 +201,7 @@ def get_popup_reminders():
 
 # 设置弹窗提醒flag
 def set_popup_reminders(flag):
-    current_file_directory = os.path.dirname(os.path.abspath(__file__))
-    ini_path = os.path.join(current_file_directory, "config\\config.ini")
+    ini_path = Util.get_path("config\\config.ini")
     # 创建配置解析器
     config = configparser.ConfigParser()
     config.read(ini_path)
@@ -216,8 +216,7 @@ def set_popup_reminders(flag):
 
 # 从config.ini中读取是否声音提醒
 def get_sound_reminders():
-    current_file_directory = os.path.dirname(os.path.abspath(__file__))
-    ini_path = os.path.join(current_file_directory, "config\\config.ini")
+    ini_path = Util.get_path("config\\config.ini")
     # 创建配置解析器
     config = configparser.ConfigParser()
     # 读取配置文件
@@ -233,8 +232,7 @@ def get_sound_reminders():
 
 # 写入声音提醒flag
 def set_sound_reminders(flag):
-    current_file_directory = os.path.dirname(os.path.abspath(__file__))
-    ini_path = os.path.join(current_file_directory, "config\\config.ini")
+    ini_path = Util.get_path("config\\config.ini")
     # 创建配置解析器
     config = configparser.ConfigParser()
     config.read(ini_path)
@@ -247,19 +245,14 @@ def set_sound_reminders(flag):
     print(f'【更新-开启声音提醒FLAG】: {flag}')
 
 
+
+
+
 # 截取图像指定区域
 def capture_region(img, x, y, w, h):
     """ 截取图像指定区域 """
     return img[y:y + h, x:x + w]
 
 
-current_file_directory = os.path.dirname(os.path.abspath(__file__))
-img_dir = os.path.join(current_file_directory, "img")
 
-# set_adb_path("D:\\Program Files\\MuMuPlayer-12.0\\shell")
-adb_dir = get_adb_path()
 
-cd_adbpath = "cd" + " D:\\Program Files\\MuMuPlayer-12.0\\shell"
-img_name = "screenshot10.png"
-img_src_path = img_dir + "\\" + img_name
-crop_img_src_path = img_dir + "\\child_screenshot.png"
