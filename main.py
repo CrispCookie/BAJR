@@ -74,7 +74,7 @@ class MyApp:
         """开始或暂停循环"""
         # 开始
         if not self.is_running:
-
+            self.log_text.delete("1.0", "end")
             if self.adb_port == "":
                 self.log_text.insert(tk.END, "请先配置adb调试端口(从MuMu模拟器问题诊断处查找或直接百度)\n")
                 return
@@ -102,28 +102,27 @@ class MyApp:
         drive, _ = os.path.splitdrive(adb_dir)
         cd_adbpath = drive + "&cd " + adb_dir
 
-        result = ADB_Command.adb_connect(cd_adbpath, self.adb_port)
-        if not ("already connected" in result.stdout):
+        try:
+            result = ADB_Command.adb_connect(cd_adbpath, self.adb_port)
+            print("【ADB连接结果】" + result.stdout)
+            if not ("already connected" in result.stdout) and not ("connected to" in result.stdout):
+                # 暂停循环
+                self.is_running = False
+                self.start_pause_button.config(text="开始")
+                self.stop_thread.set()  # 设置停止事件，通知线程终止
+                self.log_text.insert(tk.END, "【监听结束】ADB连接错误，请查看配置参数是否正确\n")
+                return
+        except TypeError:
             # 暂停循环
             self.is_running = False
             self.start_pause_button.config(text="开始")
             self.stop_thread.set()  # 设置停止事件，通知线程终止
-            self.log_text.insert(tk.END, "【监听结束】ADB连接错误，请查看配置参数是否正确\n")
-            return
-        self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】正在申请ROOT权限,首次申请请在模拟器上确认\n")
-        result = ADB_Command.adb_root(cd_adbpath)
-        if "adbd cannot run as root in production builds" in result.stdout:
-            # 暂停循环
-            self.is_running = False
-            self.start_pause_button.config(text="开始")
-            self.stop_thread.set()  # 设置停止事件，通知线程终止
-            self.log_text.insert(tk.END, "【监听结束】ROOT权限申请失败!\n")
+            self.log_text.insert(tk.END, "【监听结束】此端口下的模拟器未打开\n")
             return
 
 
         current_file_directory = Util.get_work_path()
         img_dir = Util.get_path("img")
-
         img_name = "screenshot10.png"
         img_src_path = img_dir + "\\" + img_name
         crop_img_src_path = img_dir + "\\child_screenshot.png"
@@ -133,8 +132,22 @@ class MyApp:
         print("【img目录】" + img_dir)
         print("【截图文件路径】" + img_src_path)
         print("【截图的截图路径】" + crop_img_src_path)
-        ADB_Command.adb_root(cd_adbpath)
-        ADB_Command.adb_screencap(cd_adbpath, img_src_path)
+
+        if not ADB_Command.adb_screencap(cd_adbpath, img_src_path):
+            # 如果因为没有权限而截屏失败
+            self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】缺少ROOT权限,请在模拟器中进行确认\n")
+            ADB_Command.adb_root(cd_adbpath)
+            ADB_Command.adb_screencap(cd_adbpath, img_src_path)
+
+        if not Util.check_image_size(img_src_path):
+            # 暂停循环
+            self.is_running = False
+            self.start_pause_button.config(text="开始")
+            self.stop_thread.set()  # 设置停止事件，通知线程终止
+            self.log_text.insert(tk.END, "【监听结束】屏幕分辨率不为1920*1080\n")
+            return
+        self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】屏幕分辨率满足1920*1080\n")
+
         x, y, w, h = ADB_Command.get_rank_coordinate()
         img00 = cv2.imread(img_src_path)
         # 第一次截取并保存为 child_screenshot.png
@@ -144,9 +157,22 @@ class MyApp:
         img = img.resize((279, 160))  # 调整图片大小
         self.img = ImageTk.PhotoImage(img)
         self.image_label.config(image=self.img)
-        count = 0
+
+
+
+        height, width, channels = cv2.imread(img_src_path).shape  # 获取截图长宽高
+        if not width == 1920 or not height == 1080:
+            print("【模拟器分别率不为1920*1080】")
+            # 暂停循环
+            self.is_running = False
+            self.start_pause_button.config(text="开始")
+            self.stop_thread.set()  # 设置停止事件，通知线程终止
+            self.log_text.insert(tk.END, "模拟器分别率不为1920*1080\n")
+            return
 
         # OCR读取当前竞技场排名并填入文本框中
+        self.log_text.insert(tk.END,
+                             f"【{time.strftime('%H:%M:%S')}】OCR开启，初次使用时需搭梯子下载模型(需加载一段时间)\n")
         now_rank, rank_T = OCR.getTextByOCR(crop_img_src_path)
         self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】初始排名: {now_rank}\n")
         print("【排名文本框】" + self.text_entry.get())
@@ -155,91 +181,118 @@ class MyApp:
         self.text_entry.insert(0, entry_info)
 
         self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】开始监听！\n")
-        # 监听循环
+        count = 0
+        # ---------------------------------------监听循环------------------------------------------------------
         while not self.stop_thread.is_set():
-            # 每次循环重新加载最新的图像
-            ADB_Command.adb_screencap(cd_adbpath, img_src_path)
-            original_img = cv2.imread(img_src_path)
-            height, width, channels = original_img.shape
 
-            if not width == 1920 or not height == 1080:
-                print("【模拟器分别率不为1920*1080】")
-                # 暂停循环
-                self.is_running = False
-                self.start_pause_button.config(text="开始")
-                self.stop_thread.set()  # 设置停止事件，通知线程终止
-                self.log_text.insert(tk.END, "【监听结束】模拟器分别率不为1920*1080\n")
-                break
 
-            # 战术大赛-繁体标志位图片截取保存
-            flag_img_src_path = os.path.join(img_dir, "flag.png")
-            child_screenshot = ADB_Command.capture_region(original_img, 156, 11, 172, 52)
-            cv2.imwrite(flag_img_src_path, child_screenshot)
-            T, C = OCR.getTextByOCR(flag_img_src_path)  # 获取识别文字与置信度
-            page_flag = True
-            if count == 0:
-                self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】监测界面:{T}，置信度:{C}\n")
-            page_flag = False
-            if (T == "戰術大賽" or T == "战术对抗"):
-                page_flag = True
+            ADB_Command.adb_screencap(cd_adbpath, img_src_path)  # 截图
 
-            if (not page_flag):
+            if check_in_JJC():
+                if check_have_message():
+                    print("【识别到通知弹窗】")
+                    Info = check_message()
+                    if ("網路存取不順暢" == Info):
+                        link_count = 1
+                        self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】检测到弹窗：網絡存取不順暢\n")
+                        while True:
+                            ADB_Command.adb_screencap(cd_adbpath, img_src_path)  # 截图
+                            link_info = check_message()
+                            print(f"【消息弹窗-网络存取不顺畅】{link_info}")
+                            if "網路存取不順暢" in link_info:
+                                print(f"【尝试重新连接】第{link_count}次")
+                                self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】尝试重新连接-第{link_count}次\n")
+                                ADB_Command.adb_click(cd_adbpath, 1114,752)  # 点击重新连接
+                                time.sleep(5)  # 延时5S
+                                link_count = link_count + 1
+                            else:
+                                if (not check_have_message()) and check_in_JJC():
+                                    print(f"重新连接成功")
+                                    self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】重新连接成功\n")
+                                    break
+                                else:
+                                    print(f"监听软件错误操作致使游戏重启")
+                                    self.stop_run("监听软件错误操作致使游戏重启")
+                                    return
+                            if link_count == 4:
+                                # 暂停循环
+                                print("【监听结束】三次重连均失败\n")
+                                self.stop_run("三次重连均失败")
+                                return
+
+            else:
                 print("【当前页面并不处于竞技场】")
-                # 暂停循环
-                self.is_running = False
-                self.start_pause_button.config(text="开始")
-                self.stop_thread.set()  # 设置停止事件，通知线程终止
-                self.log_text.insert(tk.END, "【监听结束】当前页面并不处于竞技场\n")
-                break
+                self.stop_run("当前页面并不处于竞技场")
+                return
 
             print("【当前页面处于竞技场】")
-
-            count = count + 1
             print(f"【第{count}次循环】开始")
-            self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】第{count}次监听\n")
-            img = cv2.imread(img_src_path)
-            # 读取之前保存的 child_screenshot.png
-            prev_screenshot = cv2.imread(crop_img_src_path)
-            # 截取当前图像的指定区域
-            current_screenshot = ADB_Command.capture_region(img, x, y, w, h)
+
+            ADB_Command.adb_screencap(cd_adbpath, img_src_path)  # 截图
+            if not count == 0:  # 点击逻辑
+                if not check_have_message():
+                    self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】第{count}次监听\n")
+                    print(f"【第{count}次循环】点击刷新按钮")
+                    ADB_Command.adb_click(cd_adbpath, 1734, 219)  # 点击刷新按钮
+                    time.sleep(1)
+                else:
+                    self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】检测到通知框-跳过点击刷新事件-{now_rank}\n")
+                    continue
+            # 截图：排名
+            ADB_Command.adb_screencap(cd_adbpath, img_src_path)  # 截图
+            original_img = cv2.imread(img_src_path)
+            child_screenshot01 = ADB_Command.capture_region(original_img, x, y, w, h)
+            cv2.imwrite(crop_img_src_path, child_screenshot01)
+            img = Image.open(crop_img_src_path)
+            img = img.resize((279, 160))  # 调整图片大小
+            self.img = ImageTk.PhotoImage(img)
+            self.image_label.config(image=self.img)
 
             # 比较当前截图与之前的截图是否一致
             if not count == 0:
-
                 now_rank, rank_T = OCR.getTextByOCR(crop_img_src_path)
                 pre_rank = self.text_entry.get().split('-')[1];
                 entry_info = "当前竞技场排名-" + now_rank
                 self.text_entry.delete(0, tk.END)  # 清空排名文本框
                 self.text_entry.insert(0, entry_info)
 
-                # if ADB_Command.compare_images(current_screenshot, prev_screenshot):
                 if now_rank == pre_rank:
                     print(f"【第{count}次循环】排名未变动")
                     self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】排名未变动-{now_rank}\n")
                 else:
-                    # remind.plyer_remind()
-                    wav_name = "01.wav"
-                    wav_src_path = img_dir + "\\" + wav_name
+                    if  "第" in now_rank and "名" in now_rank:
+                        # remind.plyer_remind()
+                        wav_name = "01.wav"
+                        wav_src_path = img_dir + "\\" + wav_name
+                        # 更新 child_screenshot.png 为新的截图
+                        cv2.imwrite(crop_img_src_path, child_screenshot01)
+                        img = Image.open(crop_img_src_path)
+                        img01 = img.resize((279, 160))  # 调整图片大小
+                        self.img = ImageTk.PhotoImage(img01)
+                        self.image_label.config(image=self.img)
 
-                    remind.ctypes_remind("你的竞技场排名发生变动！", wav_src_path)
+                        # 点击战报
+                        ADB_Command.adb_click(cd_adbpath, 207, 885)
+                        time.sleep(1)
+                        ADB_Command.adb_screencap(cd_adbpath, img_src_path)  # 截图
+                        original_img = cv2.imread(img_src_path)
+                        attacker_img_src_path = os.path.join(img_dir, "attacker.png")
 
-                    self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】排名发生变动{pre_rank}->{now_rank}\n")
-                    # 更新 child_screenshot.png 为新的截图
-                    cv2.imwrite(crop_img_src_path, current_screenshot)
-
-                    img = Image.open(crop_img_src_path)
-                    img01 = img.resize((279, 160))  # 调整图片大小
-                    self.img = ImageTk.PhotoImage(img01)
-                    self.image_label.config(image=self.img)
-
-                    # 暂停循环
-                    self.is_running = False
-                    self.start_pause_button.config(text="开始")
-                    self.stop_thread.set()  # 设置停止事件，通知线程终止
-                    self.log_text.insert(tk.END, "【监听结束】排名变动\n")
-
+                        ADB_Command.crop_image(original_img,1039,324,1305,381,attacker_img_src_path)
+                        self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】排名发生变动{pre_rank}->{now_rank}\n")
+                        T, C = OCR.getTextByOCR(attacker_img_src_path)  # 获取识别文字与置信度
+                        print(f"【竞技场排名变动】进攻者:{T}")
+                        self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】进攻者:{T}\n")
+                        remind.ctypes_remind(f"你的竞技场排名发生变动！\n进攻者：{T}", wav_src_path)
+                        # 暂停循环
+                        self.stop_run("排名变动")
+                        return
+                    else:
+                        self.stop_run("当前不处于竞技场页面")
+                        return
+            count = count + 1
             self.log_text.see(tk.END)  # 自动滚动到最后
-            time.sleep(30)  # 每 30 秒执行一次循环
+            time.sleep(5)  # 每 10 秒执行一次循环
 
     def show_about(self):
         """显示关于窗口"""
@@ -253,7 +306,6 @@ class MyApp:
         tk.Label(about_window, text="此软件是以MuMu模拟器的adb截图命令\n"
                                     "与OCR文字识别为基础实现的，使用需要\n"
                                     "用户的模拟器分辨率满足1920*1080并\n"
-                                    "开启MuMu模拟器的ROOT权限,使用前请先\n"
                                     "配置Mumu模拟器adb.exe所在路径与端口\n"
                                     "号(默认为16384)。 欢迎提出合理的需求", font=("Arial", 12)).pack(pady=10)
         tk.Label(about_window, text="作者: B站@Roxy7650", font=("Arial", 12)).pack(pady=10)
@@ -320,10 +372,55 @@ class MyApp:
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         window.geometry(f"{width}x{height}+{x}+{y}")
 
+    def stop_run(self,Text):
+        self.is_running = False
+        self.start_pause_button.config(text="开始")
+        self.stop_thread.set()  # 设置停止事件，通知线程终止
+        self.log_text.insert(tk.END, f"【监听结束】{Text}\n")
+
+#检查页面是否在JJC
+def check_in_JJC():
+    img_dir = Util.get_path("img")
+    img_name = "screenshot10.png"
+    img_src_path = img_dir + "\\" + img_name
+    original_img = cv2.imread(img_src_path)
+    flag_img_src_path = os.path.join(img_dir, "flag.png")
+    child_screenshot02 = ADB_Command.capture_region(original_img, 156, 11, 172, 52)
+    cv2.imwrite(flag_img_src_path, child_screenshot02)  # 截取标志位
+    T, C = OCR.getTextByOCR(flag_img_src_path)  # 获取识别文字与置信度
+    print(f"【识别界面】{T}")
+    if (not T == "戰術大賽"):
+        return False
+    else:
+        return True
+
+def check_have_message():
+    img_dir = Util.get_path("img")
+    img_name = "screenshot10.png"
+    img_src_path = img_dir + "\\" + img_name
+    info_flag_img_src_path = os.path.join(img_dir, "info_flag.png")
+    ADB_Command.crop_image(img_src_path, 751, 208, 1244, 262, info_flag_img_src_path)
+    T, C = OCR.getTextByOCR(info_flag_img_src_path)  # 获取识别文字与置信度
+    print(f"【识别有无通知框】{T}")
+    if T == "通知":
+        return True
+    else:
+        return False
+
+
+def check_message():
+    img_dir = Util.get_path("img")
+    img_name = "screenshot10.png"
+    img_src_path = img_dir + "\\" + img_name
+    info_img_src_path = os.path.join(img_dir, "info.png")
+    ADB_Command.crop_image(img_src_path, 571, 374, 1294, 608, info_img_src_path)
+    Info, _ = OCR.getTextByOCR(info_img_src_path)
+    print(f"【识别消息框内文字】{Info}")
+    return Info
+
+
 
 if __name__ == "__main__":
-
-
     root = tk.Tk()
     app = MyApp(root)
     icon_path = Util.get_work_path() + "\\img\\BJAR.ico"

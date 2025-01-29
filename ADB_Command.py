@@ -1,6 +1,8 @@
 import subprocess
 import threading
 import time
+
+import OCR
 import Util
 
 
@@ -11,6 +13,8 @@ import numpy as np
 
 from PIL import Image
 import os
+
+import main
 
 
 # 两个命令合并
@@ -24,7 +28,7 @@ def adb_root(cd_adbpath):
     adb_command01 = f"adb root"
     adb_command01 = combine_adb_commands(cd_adbpath, adb_command01)
     print(f"【执行-ROOT】{adb_command01}")
-    return subprocess.run(adb_command01, shell=True, capture_output=True, text=True)
+    return subprocess.run(adb_command01, shell=True, capture_output=True, text=True,encoding='utf-8')
 
 
 # adb connect
@@ -32,19 +36,34 @@ def adb_connect(cd_adbpath,port):
     adb_command01 = f"adb connect 127.0.0.1:{port}"
     adb_command01 = combine_adb_commands(cd_adbpath, adb_command01)
     print(f"【执行-ADB连接】{adb_command01}")
-    return  subprocess.run(adb_command01, shell=True, capture_output=True, text=True)
+    return subprocess.run(adb_command01, shell=True, capture_output=True, text=True,encoding='utf-8')
+
+
+#adb 鼠标点击
+def adb_click(cd_adbpath,x,y):
+    adb_command01 = f"adb shell input tap {x} {y}"
+    adb_command01 = combine_adb_commands(cd_adbpath, adb_command01)
+    print(f"【执行-ADB屏幕点击】{adb_command01}")
+    return subprocess.run(adb_command01, shell=True, capture_output=True, text=True,encoding='utf-8')
+
+
 
 
 # adb截图并导出
 def adb_screencap(cd_adbpath, img_src):
-    adb_command01 = f"adb shell screencap /data/screen.png"
+    adb_command01 = f"adb shell screencap /sdcard/screen.png"
     adb_command01 = combine_adb_commands(cd_adbpath, adb_command01)
     print(f"【执行-ADB截图命令】{adb_command01}")
-    result = subprocess.run(adb_command01, shell=True, capture_output=True, text=True)
-    adb_command02 = combine_adb_commands(cd_adbpath, "adb pull /data/screen.png " + img_src)
+    result = subprocess.run(adb_command01, shell=True, capture_output=True, text=True,encoding="utf-8")
+    print(f"【结果-ADB截图命令】{result.stdout}")
+    print(f"【报错-ADB截图命令】{result.stderr}")
+    adb_command02 = combine_adb_commands(cd_adbpath, "adb pull /sdcard/screen.png " + img_src)
     print(f"【执行-截图导出至PC】{adb_command02}")
-    result = subprocess.run(adb_command02, shell=True, capture_output=True, text=True)
+    result = subprocess.run(adb_command02, shell=True, capture_output=True, text=True,encoding='utf-8')
     print(f"【结果-截图导出至PC】{result.stdout}")
+    if("failed to stat remote" in result.stdout):
+        return False
+    return True
 
 
 # Pillow 库剪切图片
@@ -255,4 +274,18 @@ def capture_region(img, x, y, w, h):
 
 
 
+def capture_xy(img, x1, y1, x2, y2):
+    """ 截取图像指定区域 """
+    return img[y1:y2,x1:x2]
 
+
+def crop_image(image_path, x1, y1, x2, y2, result_path):
+    # 读取图片
+    img = cv2.imread(image_path)
+    if img is None:
+        print("无法读取图片，请检查路径是否正确")
+        return
+    # 使用切片裁剪图片
+    cropped_img = img[y1:y2, x1:x2]
+    # 保存裁剪后的图片到 result_path
+    cv2.imwrite(result_path, cropped_img)
