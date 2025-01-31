@@ -170,6 +170,34 @@ def set_adb_port(new_adb_port):
 
     print(f'【新的ADB端口】: {new_adb_port}')
 
+# 写入email到config.ini
+def set_email(new_email):
+    ini_path = Util.get_path("config\\config.ini")
+    # 创建配置解析器
+    config = configparser.ConfigParser()
+    config.read(ini_path)
+    # 修改 adb_path 的值
+    config.set('settings', 'email', new_email)
+    # 将修改保存回配置文件
+    with open(ini_path, 'w') as configfile:
+        config.write(configfile)
+
+    print(f'【新的email】: {new_email}')
+
+
+# 从config.ini中读取adb的路径
+def get_email():
+    ini_path = Util.get_path("config\\config.ini")
+    # 创建配置解析器
+    config = configparser.ConfigParser()
+    # 读取配置文件
+    config.read(ini_path)
+    # 获取当前的 adb_path 值
+    adb_path = config.get('settings', 'email')
+    print(f'【当前email】 {adb_path}')
+    return adb_path
+
+
 
 def get_rank_coordinate():
     ini_path = Util.get_path("config\\config.ini")

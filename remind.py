@@ -1,17 +1,26 @@
+import time
+
 import winsound
 from plyer import notification
 import ctypes
 
 from time import sleep
 
-def plyer_remind():
+def plyer_remind(sound_file):
+
     notification.notify(
         title='你的竞技场排名发生变动！',
         message='该上号开根了',
         app_name = "超级根批恶霸",
-        timeout=10,  # 通知显示的时间（秒）
+        timeout=3,  # 通知显示的时间（秒）
         ticker = "你的竞技场排名发生变动",
     )
+
+    time.sleep(1.4)
+
+    winsound.PlaySound(sound_file, winsound.SND_FILENAME)
+
+
 
 
 def ctypes_remind(message, sound_file):
@@ -32,4 +41,4 @@ def ctypes_remind(message, sound_file):
 #ctypes_remind("你的竞技场排名发生变动！", "D:\\Code\\PyCharm\\BJAR\img\\01.wav");
 
 
-
+#plyer_remind("D:\\Code\\PyCharm\\BJAR\\img\\01.wav")

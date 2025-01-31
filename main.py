@@ -2,11 +2,13 @@ import tkinter as tk
 from tkinter import scrolledtext, messagebox, Toplevel
 
 import cv2
+import winsound
 from PIL import Image, ImageTk
 import threading
 import time
 import os
 import ADB_Command
+import BAJR_Request
 import Util
 import remind
 import OCR
@@ -15,12 +17,13 @@ import OCR
 class MyApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("超级根批恶霸")
+        self.root.title("超级根批恶霸 ver1.8 -邮件推送")
         self.is_running = False
         self.stop_thread = threading.Event()
 
         self.adb_path = ADB_Command.get_adb_path()
         self.adb_port = ADB_Command.get_adb_port()
+        self.email = ADB_Command.get_email()
 
         # 左侧布局
         left_frame = tk.Frame(root)
@@ -182,10 +185,8 @@ class MyApp:
 
         self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】开始监听！\n")
         count = 0
-        # ---------------------------------------监听循环------------------------------------------------------
+        # ---------------------------------------监听循环---------------------------------------------------------------------------------------
         while not self.stop_thread.is_set():
-
-
             ADB_Command.adb_screencap(cd_adbpath, img_src_path)  # 截图
 
             if check_in_JJC():
@@ -261,7 +262,7 @@ class MyApp:
                     self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】排名未变动-{now_rank}\n")
                 else:
                     if  "第" in now_rank and "名" in now_rank:
-                        # remind.plyer_remind()
+
                         wav_name = "01.wav"
                         wav_src_path = img_dir + "\\" + wav_name
                         # 更新 child_screenshot.png 为新的截图
@@ -270,23 +271,37 @@ class MyApp:
                         img01 = img.resize((279, 160))  # 调整图片大小
                         self.img = ImageTk.PhotoImage(img01)
                         self.image_label.config(image=self.img)
+                        self.log_text.insert(tk.END,f"【{time.strftime('%H:%M:%S')}】排名发生变动{pre_rank}->{now_rank}\n")
+
+                        winsound.PlaySound(wav_src_path, winsound.SND_FILENAME)     #播放爱丽丝语音
+                        message_box_text = "排名发生变动！\n"+pre_rank+" -> "+now_rank
+                        show_message(message_box_text)
 
                         # 点击战报
                         ADB_Command.adb_click(cd_adbpath, 207, 885)
-                        time.sleep(1)
+                        time.sleep(2)
                         ADB_Command.adb_screencap(cd_adbpath, img_src_path)  # 截图
-                        original_img = cv2.imread(img_src_path)
                         attacker_img_src_path = os.path.join(img_dir, "attacker.png")
 
-                        ADB_Command.crop_image(original_img,1039,324,1305,381,attacker_img_src_path)
-                        self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】排名发生变动{pre_rank}->{now_rank}\n")
+                        #退出战报
+                        ADB_Command.crop_image(img_src_path,1039,324,1305,381,attacker_img_src_path)
+
                         T, C = OCR.getTextByOCR(attacker_img_src_path)  # 获取识别文字与置信度
                         print(f"【竞技场排名变动】进攻者:{T}")
                         self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】进攻者:{T}\n")
-                        remind.ctypes_remind(f"你的竞技场排名发生变动！\n进攻者：{T}", wav_src_path)
-                        # 暂停循环
-                        self.stop_run("排名变动")
-                        return
+                        try:
+                            result =  BAJR_Request.send_email(self.email,T,pre_rank,now_rank)
+                            if "邮件发送成功" in result:
+                                self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】发送邮件通知{self.email}\n")
+                            else:
+                                self.log_text.insert(tk.END, f"【{time.strftime('%H:%M:%S')}】{self.email}此邮箱地址不处于白名单内\n")
+                        except:
+                            print(f"【邮件发送未成功】:{T}")
+
+                        entry_info = "当前竞技场排名-" + now_rank
+                        self.text_entry.delete(0, tk.END)  # 清空排名文本框
+                        self.text_entry.insert(0, entry_info)
+                        ADB_Command.adb_click(cd_adbpath, 1734, 219)  # 点击刷新按钮
                     else:
                         self.stop_run("当前不处于竞技场页面")
                         return
@@ -316,34 +331,42 @@ class MyApp:
         """显示配置窗口"""
         config_window = Toplevel(self.root)
         config_window.title("配置")
-        config_window.geometry("400x250")
+        config_window.geometry("400x320")
         config_window.resizable(False, False)
 
         # 居中显示子窗口
         self.center_window(config_window)
 
         # 标签
-        tk.Label(config_window, text="MuMu模拟器adb.exe所处的目录路径：", font=("Arial", 12)).pack(pady=10)
+        tk.Label(config_window, text="模拟器adb.exe所处的目录路径：", font=("Arial", 12)).pack(pady=10)
 
         # 输入框
         adb_path_input_field = tk.Entry(config_window, width=40)
         adb_path_input_field.pack(pady=5)
 
         # 标签
-        tk.Label(config_window, text="MuMu模拟器adb调试端口：", font=("Arial", 12)).pack(pady=10)
+        tk.Label(config_window, text="模拟器adb调试端口：", font=("Arial", 12)).pack(pady=10)
         # 输入框
         adb_port_input_field = tk.Entry(config_window, width=40)
         adb_port_input_field.pack(pady=5)
 
+        # 标签
+        tk.Label(config_window, text="通知用QQ邮箱：", font=("Arial", 12)).pack(pady=10)
+        email_input_field = tk.Entry(config_window, width=40)
+        email_input_field.pack(pady=5)
+
         # 调用 get_adb_path 函数获取配置值，并预填入输入框
         adb_path_input_field.insert(0, self.adb_path)
         adb_port_input_field.insert(0, self.adb_port)
+        email_input_field.insert(0,self.email)
 
         # 按钮：提交和取消
         button_frame = tk.Frame(config_window)
         button_frame.pack(pady=20)
 
         def submit_action():
+            self.log_text.delete("1.0", "end")
+
             value01 = adb_path_input_field.get()
             self.log_text.insert(tk.END, f"【配置adb路径】 {value01}\n")
             self.log_text.see(tk.END)  # 滚动到日志框底部
@@ -355,6 +378,13 @@ class MyApp:
             self.log_text.see(tk.END)  # 滚动到日志框底部
             ADB_Command.set_adb_port(value02)
             self.adb_port = ADB_Command.get_adb_port()
+
+            value03 = email_input_field.get()
+            self.log_text.insert(tk.END, f"【配置通知邮箱】 {value03}\n")
+            self.log_text.see(tk.END)  # 滚动到日志框底部
+            ADB_Command.set_email(value03)
+            self.email = ADB_Command.get_email()
+
             config_window.destroy()
 
         def cancel_action():
@@ -377,6 +407,52 @@ class MyApp:
         self.start_pause_button.config(text="开始")
         self.stop_thread.set()  # 设置停止事件，通知线程终止
         self.log_text.insert(tk.END, f"【监听结束】{Text}\n")
+
+
+def show_message(message):
+    # 在主线程中调用显示消息框
+    def display_message():
+        # 创建一个新的顶级窗口作为消息框
+        msg_box = tk.Toplevel(root)
+        msg_box.title("超级根批恶霸")
+
+        # 设置消息内容
+        message_label = tk.Label(msg_box, text=message)
+        message_label.pack(padx=50, pady=20)
+
+        # 创建确认按钮，并绑定关闭函数
+        def close_message_box():
+            msg_box.destroy()  # 关闭消息框
+
+        ok_button = tk.Button(msg_box, text="确认", command=close_message_box)
+        ok_button.pack(pady=10)
+
+        # 设置自定义的宽度和高度
+        msg_box_width = 300
+        msg_box_height = 140
+        msg_box.geometry(f"{msg_box_width}x{msg_box_height}")  # 设置消息框的大小
+        msg_box.attributes('-topmost', True)
+        # 获取屏幕宽度和高度
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+
+        # 获取消息框的宽度和高度
+        msg_box_width = msg_box.winfo_reqwidth()
+        msg_box_height = msg_box.winfo_reqheight()
+
+        # 计算消息框居中位置
+        position_top = (screen_height - msg_box_height) // 2
+        position_left = (screen_width - msg_box_width) // 2
+
+        # 设置消息框的位置
+        msg_box.geometry(f"+{position_left}+{position_top}")
+
+        # 启动消息框的事件循环
+        msg_box.mainloop()
+
+    # 使用 after() 方法在主线程中调度显示消息框
+    root.after(0, display_message)
+
 
 #检查页面是否在JJC
 def check_in_JJC():
@@ -426,3 +502,4 @@ if __name__ == "__main__":
     icon_path = Util.get_work_path() + "\\img\\BJAR.ico"
     root.iconbitmap(icon_path)
     root.mainloop()
+
